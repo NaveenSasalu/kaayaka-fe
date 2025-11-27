@@ -1,5 +1,4 @@
 name: Release & Update GitOps
-
 on:
   push:
     branches:
@@ -67,6 +66,12 @@ jobs:
           git clone https://${{ secrets.GITOPS_USER }}:${{ secrets.GITOPS_TOKEN }}@github.com/${{ secrets.GITOPS_REPO }} gitops
           ls -la gitops
         shell: bash
+
+      - name: Fix origin URL for GitOps push
+        working-directory: ./gitops
+        run: |
+          git remote set-url origin https://${{ secrets.GITOPS_USER }}:${{ secrets.GITOPS_TOKEN }}@github.com/${{ secrets.GITOPS_REPO }}
+          git remote -v
 
       - name: Update values.yaml in GitOps (dev)
         working-directory: ./gitops
