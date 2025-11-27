@@ -3,7 +3,7 @@ FROM node:18-alpine as builder
 WORKDIR /app
 
 # 1. Copy dependency files first (for caching)
-COPY package.json package-lock.jason ./
+COPY package.json package-lock.json ./
 
 # 2. Install dependencies 
 RUN npm Install 
