@@ -1,0 +1,105 @@
+name: Release & Update GitOps
+
+on:
+  push:
+    branches:
+      - main # change to your release branch as needed
+    paths:
+      - "VERSION"
+      - "Dockerfile"
+      - "package.json"
+      - "src/**"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/frontend
+  GITOPS_DEV_VALUES_PATH: "environments/dev/frontend-values.yaml" # adjust path in your gitops repo
+  GITOPS_DEFAULT_BRANCH: "main"
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout frontend repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read VERSION
+        id: ver
+        run: |
+          if [ ! -f VERSION ]; then echo "VERSION file not found" >&2; exit 1; fi
+          VERSION=$(cat VERSION | tr -d " \n\r")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU (for multi-arch or cross builds, optional)
+        uses: docker/setup-qemu-action@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.ver.outputs.version }}
+            ${{ env.IMAGE_NAME }}:latest
+
+      - name: Prepare to update GitOps repo
+        run: |
+          echo "Preparing GitOps update for version ${{ steps.ver.outputs.version }}"
+
+      - name: Clone GitOps repo
+        env:
+          GITOPS_REPO: ${{ secrets.GITOPS_REPO }}
+        run: |
+          git config --global user.name "${{ secrets.GIT_USER_NAME }}"
+          git config --global user.email "${{ secrets.GIT_USER_EMAIL }}"
+          git clone https://x-access-token:${{ secrets.GITOPS_TOKEN }}@github.com/${{ secrets.GITOPS_REPO }} gitops
+          ls -la gitops
+        shell: bash
+
+      - name: Update values.yaml in GitOps (dev)
+        working-directory: ./gitops
+        run: |
+          set -e
+          VERSION=${{ steps.ver.outputs.version }}
+          FILE="${{ env.GITOPS_DEV_VALUES_PATH }}"
+          if [ ! -f "$FILE" ]; then echo "file $FILE not found" && exit 1; fi
+
+          # Use yq if available — fallback to sed
+          if command -v yq >/dev/null 2>&1; then
+            yq e ".image.tag = \"${VERSION}\"" -i "$FILE"
+          else
+            # this sed assumes "image:\n  tag: \"x.y.z\"" structure; adapt if different
+            awk -v ver="$VERSION" '
+              BEGIN {printed=0}
+              { if ($1=="tag:" && printed==0) { print "  tag: \""ver"\""; printed=1; next } print }
+            ' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
+          fi
+
+          git checkout -b "ci/update-frontend-${VERSION}"
+          git add "$FILE"
+          git commit -m "chore(ci): update frontend image tag to ${VERSION}"
+          git push origin "ci/update-frontend-${VERSION}"
+
+      - name: Create Pull Request to GitOps repo
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITOPS_TOKEN }}
+          repository: ${{ secrets.GITOPS_REPO }}
+          base: ${{ env.GITOPS_DEFAULT_BRANCH }}
+          head: "ci/update-frontend-${{ steps.ver.outputs.version }}"
+          title: "chore(ci): update frontend image tag to ${{ steps.ver.outputs.version }}"
+          body: "Automated update of frontend image tag to ${{ steps.ver.outputs.version }} by CI."
