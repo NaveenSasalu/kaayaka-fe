@@ -8,8 +8,8 @@ on:
       - "VERSION"
       - "Dockerfile"
       - "package.json"
-      - "src/**"
-
+      - "app/**"
+      - "public/**"
 permissions:
   contents: write
   pull-requests: write
