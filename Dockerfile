@@ -1,5 +1,5 @@
 ### Stage 1 - Build
-FROM node:18-alpine as builder
+FROM node:24-alpine as builder
 WORKDIR /app
 
 # 1. Copy dependency files first (for caching)
