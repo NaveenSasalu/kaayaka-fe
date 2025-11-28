@@ -96,13 +96,3 @@ jobs:
           git add "$FILE"
           git commit -m "chore(ci): update frontend image tag to ${VERSION}"
           git push origin "ci/update-frontend-${VERSION}"
-
-      - name: Create Pull Request to GitOps repo
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITOPS_TOKEN }}
-          repository: ${{ secrets.GITOPS_REPO }}
-          base: ${{ env.GITOPS_DEFAULT_BRANCH }}
-          head: "ci/update-frontend-${{ steps.ver.outputs.version }}"
-          title: "chore(ci): update frontend image tag to ${{ steps.ver.outputs.version }}"
-          body: "Automated update of frontend image tag to ${{ steps.ver.outputs.version }} by CI."
