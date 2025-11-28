@@ -38,6 +38,12 @@ jobs:
           sudo wget https://github.com/mikefarah/yq/releases/download/v4.40.5/yq_linux_amd64 -O /usr/bin/yq
           sudo chmod +x /usr/bin/yq
 
+      - name: Update image fields in GitOps repo
+        working-directory: ./gitops
+        run: |
+          yq eval ".image.repository = \"naveensasalu/frontend\"" -i apps/frontend/values.yaml
+          yq eval ".image.tag = env(VERSION)" -i apps/frontend/values.yaml
+
       - name: Commit changes
         working-directory: ./gitops
         run: |
