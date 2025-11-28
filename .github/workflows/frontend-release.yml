@@ -1,0 +1,60 @@
+name: Frontend release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout frontend repo
+        uses: actions/checkout@v4
+
+      - name: Checkout frontend repo
+        id: version
+        run: echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_ENV
+
+      - name: Login to Docker Hub
+        run: echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build -t naveensasalu/frontend:${VERSION} .
+
+      - name: Push Docker image
+        run: |
+          docker push naveensasalu/frontend:${VERSION}
+
+      - name: Clone GitOps repo
+        run: |
+          git clone https://${{ secrets.GITOPS_USER }}:${{ secrets.GITOPS_TOKEN }}@github.com/${{ secrets.GITOPS_REPO }} gitops
+          ls -la gitops
+
+      - name: Install yq
+        run: |
+          sudo wget https://github.com/mikefarah/yq/releases/download/v4.40.5/yq_linux_amd64 -O /usr/bin/yq
+          sudo chmod +x /usr/bin/yq
+
+      - name: Commit changes
+        working-directory: ./gitops
+        run: |
+          git config --global user.name "${{ secrets.GIT_USER_NAME }}"
+          git config --global user.email "${{ secrets.GIT_USER_EMAIL }}"
+          git checkout -b update-frontend-${VERSION}
+          git add apps/frontend.yaml
+          git commit -m "Update frontend image to version ${VERSION}"
+
+      - name: Push changes to GitOps repo
+        working-directory: ./gitops
+        run: |
+          git remote set-url origin https://${{ secrets.GITOPS_USER }}:${{ secrets.GITOPS_TOKEN }}@github.com/${{ secrets.GITOPS_REPO }}
+          git push -u origin update-frontend-${VERSION}
+
+      - name: Create Pull Request in GitOps repo
+        working-directory: ./gitops
+        run: |
+          gh auth login --with-token <<< "${{ secrets.GITOPS_TOKEN }}"
+          gh pr create --title "Update frontend to version ${VERSION}" --body "Automated update" --base main --head update-frontend-${VERSION}
